@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Raffle Winner Wheel</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            background: #2C3E50;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #wheel-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            margin: 20px 0;
+        }
+
+        #wheel {
+            width: 100%;
+            height: 100%;
+            transform-origin: center;
+            transition: transform 4s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+
+        #pointer {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 20px;
+            background: red;
+            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+            z-index: 2;
+        }
+
+        .results {
+            color: white;
+            text-align: center;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="wheel-container">
+        <svg id="wheel" viewBox="0 0 400 400"></svg>
+        <div id="pointer"></div>
+    </div>
+    <div id="results" class="results hidden">
+        <h2>Winner Selected! 🎉</h2>
+        <p id="winner-details"></p>
+    </div>
+
+    <script>
+        class WheelVisualizer {
+            constructor(participants, winner) {
+                this.participants = participants;
+                this.winner = winner;
+                this.wheel = document.getElementById('wheel');
+                this.results = document.getElementById('results');
+                this.winnerDetails = document.getElementById('winner-details');
+            }
+
+            createSegmentPath(startAngle, endAngle, radius = 150) {
+                const centerX = 200;
+                const centerY = 200;
+                const startRad = (startAngle * Math.PI) / 180;
+                const endRad = (endAngle * Math.PI) / 180;
+                
+                const startX = centerX + radius * Math.cos(startRad);
+                const startY = centerY + radius * Math.sin(startRad);
+                const endX = centerX + radius * Math.cos(endRad);
+                const endY = centerY + radius * Math.sin(endRad);
+                
+                const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+                
+                return `M ${centerX} ${centerY} L ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY} Z`;
+            }
+
+            drawWheel() {
+                const totalEntries = this.participants.reduce((sum, p) => sum + p.entries, 0);
+                let currentAngle = 0;
+                
+                this.participants.forEach(participant => {
+                    const angle = (participant.entries / totalEntries) * 360;
+                    const path = this.createSegmentPath(currentAngle, currentAngle + angle);
+                    const segment = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    
+                    segment.setAttribute("d", path);
+                    segment.setAttribute("fill", participant.address === this.winner ? '#FF6B6B' : '#4ECDC4');
+                    segment.setAttribute("stroke", "white");
+                    segment.setAttribute("stroke-width", "2");
+                    
+                    this.wheel.appendChild(segment);
+
+                    // Add label
+                    const labelAngle = ((currentAngle + angle/2) * Math.PI) / 180;
+                    const labelRadius = 105;
+                    const labelX = 200 + labelRadius * Math.cos(labelAngle);
+                    const labelY = 200 + labelRadius * Math.sin(labelAngle);
+                    
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.textContent = participant.address.slice(-4);
+                    text.setAttribute("x", labelX);
+                    text.setAttribute("y", labelY);
+                    text.setAttribute("fill", "white");
+                    text.setAttribute("text-anchor", "middle");
+                    text.setAttribute("font-size", "14px");
+                    text.setAttribute("font-weight", "bold");
+                    text.setAttribute("transform", `rotate(${90 + currentAngle + angle/2}, ${labelX}, ${labelY})`);
+                    
+                    this.wheel.appendChild(text);
+                    
+                    currentAngle += angle;
+                });
+            }
+
+            calculateWinnerPosition() {
+                const totalEntries = this.participants.reduce((sum, p) => sum + p.entries, 0);
+                let angle = 0;
+                
+                for (const participant of this.participants) {
+                    if (participant.address === this.winner) {
+                        return -angle - ((participant.entries / totalEntries) * 360 / 2);
+                    }
+                    angle += (participant.entries / totalEntries) * 360;
+                }
+                return 0;
+            }
+
+            showResults() {
+                const winnerParticipant = this.participants.find(p => p.address === this.winner);
+                const totalEntries = this.participants.reduce((sum, p) => sum + p.entries, 0);
+                const probability = ((winnerParticipant.entries / totalEntries) * 100).toFixed(1);
+                
+                this.winnerDetails.innerHTML = `
+                    Address: ${this.winner.slice(-4)}<br>
+                    Entries: ${winnerParticipant.entries}<br>
+                    Win Probability: ${probability}%<br>
+                    Total Entries: ${totalEntries}
+                `;
+                
+                this.results.classList.remove('hidden');
+            }
+
+            spin() {
+                const totalRotation = 1080 + this.calculateWinnerPosition();
+                this.wheel.style.transform = `rotate(${totalRotation}deg)`;
+                
+                // Show results after spin animation
+                setTimeout(() => this.showResults(), 4000);
+            }
+        }
+
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const data = JSON.parse(decodeURIComponent(urlParams.get('data')));
+
+        // Initialize and start the wheel
+        const visualizer = new WheelVisualizer(data.participants, data.winner);
+        visualizer.drawWheel();
+        setTimeout(() => visualizer.spin(), 500);
+    </script>
+</body>
+</html>
